@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/Primes.iml" filepath="$PROJECT_DIR$/Primes.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Primes_main.iml" filepath="$PROJECT_DIR$/.idea/modules/Primes_main.iml" group="Primes" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/Primes_test.iml" filepath="$PROJECT_DIR$/.idea/modules/Primes_test.iml" group="Primes" />
+    </modules>
+  </component>
+</project>
