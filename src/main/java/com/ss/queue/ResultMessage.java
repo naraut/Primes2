@@ -25,7 +25,8 @@ public class ResultMessage implements MemoryMappedMessage {
 
     @Override
     public void writeMessage(Unsafe unsafe, long mem, long offset) {
-
+        unsafe.putInt(mem+offset, candidate);
+        unsafe.putByte(mem+offset+8, isPrime);
     }
 
     public boolean isPrime() {

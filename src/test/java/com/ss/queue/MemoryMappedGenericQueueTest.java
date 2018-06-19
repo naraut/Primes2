@@ -67,7 +67,7 @@ public class MemoryMappedGenericQueueTest
 
     @Test(timeout = 2000L)
     public void testMultipleOfferAndPoll() throws Exception {
-        try (MemoryMappedGenericQueue queue = new MemoryMappedGenericQueue(filePath, 2,PrimeMessage.class)) {
+        try (MemoryMappedGenericQueue<PrimeMessage> queue = new MemoryMappedGenericQueue(filePath, 2,PrimeMessage.class)) {
             List<Integer> inputs = Arrays.asList(10, -1, 0, 2, Integer.MIN_VALUE, 200, Integer.MAX_VALUE);
             inputs.stream().map(i -> new PrimeMessage(i)).forEach(queue::offer);
             pollAndAssertResults(queue, inputs);
@@ -75,9 +75,22 @@ public class MemoryMappedGenericQueueTest
     }
 
     @Test(timeout = 2000L)
+    public void testMultipleOfferAndPollResultMsg() throws Exception {
+        try (MemoryMappedGenericQueue<ResultMessage> queue = new MemoryMappedGenericQueue(filePath, 2,ResultMessage.class)) {
+            List<Integer> inputs = Arrays.asList(10, -1, 0, 2, Integer.MIN_VALUE, 200, Integer.MAX_VALUE);
+            List<Byte> results = Arrays.asList((byte)0, (byte)0, (byte)0, (byte)0, (byte)0, (byte)0, (byte)1);
+            List<Boolean> expectedOutput = Arrays.asList(false, false, false, false, false, false, true);
+            for(int i=0;i<inputs.size();i++) {
+                queue.offer(new ResultMessage(inputs.get(i), results.get(i)));
+            }
+            pollAndAssertResults(queue, inputs, expectedOutput);
+        }
+    }
+
+    @Test(timeout = 2000L)
     public void testOfferAndPollRandom() throws Exception {
 
-        try (MemoryMappedGenericQueue queue = new MemoryMappedGenericQueue(filePath, 2,PrimeMessage.class))
+        try (MemoryMappedGenericQueue<PrimeMessage> queue = new MemoryMappedGenericQueue(filePath, 2,PrimeMessage.class))
         {
             Random random = new Random();
             List<Integer> inputs = getRandomInputs(random);
@@ -99,6 +112,20 @@ public class MemoryMappedGenericQueueTest
             }
         }while(results.size() < inputs.size());
         Assert.assertEquals(inputs, results);
+    }
+
+    private void pollAndAssertResults(MemoryMappedGenericQueue queue, List<Integer> inputs, List<Boolean> expectedPrime) {
+        List<Integer> results = new ArrayList<>();
+        List<Boolean> isPrimesResult = new ArrayList<>();
+        do {
+            ResultMessage result = (ResultMessage)queue.poll();
+            if(result != null) {
+                results.add(result.getValue());
+                isPrimesResult.add(result.isPrime());
+            }
+        }while(results.size() < inputs.size());
+        Assert.assertEquals(inputs, results);
+        Assert.assertEquals(expectedPrime, isPrimesResult);
     }
 
     @After
