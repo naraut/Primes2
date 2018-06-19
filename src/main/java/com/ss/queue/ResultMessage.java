@@ -14,4 +14,8 @@ public class ResultMessage implements MemoryMappedMessage {
     public Integer getValue() {
         return candidate;
     }
+
+    public boolean isPrime() {
+        return isPrime;
+    }
 }

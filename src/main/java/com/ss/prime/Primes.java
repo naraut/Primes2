@@ -1,13 +1,13 @@
 package com.ss.prime;
 
-import com.ss.queue.MemoryMappedQueue;
+import com.ss.queue.*;
 
 import java.util.concurrent.*;
 
 public class Primes {
 
-    private final MemoryMappedQueue incomingQueue;
-    private final MemoryMappedQueue outgoingQueue;
+    private final MemoryMappedGenericQueue<PrimeMessage> incomingQueue;
+    private final MemoryMappedGenericQueue<ResultMessage> outgoingQueue;
     private final ForkJoinPool fjPool;
     private final LinkedBlockingQueue<Integer> workQueue;
     private static ConcurrentHashMap<Integer,Boolean> completeMap;
@@ -20,8 +20,8 @@ public class Primes {
     }
 
     Primes(String incomingQPath, String outgoingQPath) throws Exception {
-        incomingQueue = new MemoryMappedQueue(incomingQPath, 2);
-        outgoingQueue = new MemoryMappedQueue(outgoingQPath, 2);
+        incomingQueue = new MemoryMappedGenericQueue(incomingQPath, 2, PrimeMessage.class);
+        outgoingQueue = new MemoryMappedGenericQueue(outgoingQPath, 2, ResultMessage.class);
 
         workQueue = new LinkedBlockingQueue<>(3000);
         completeMap = new ConcurrentHashMap<>(1000);
@@ -46,9 +46,9 @@ public class Primes {
 
         for(;;)
         {
-            Integer candidate = incomingQueue.poll();
+            MemoryMappedMessage candidate = incomingQueue.poll();
             if( candidate != null) {
-                workQueue.put(candidate);
+                workQueue.put(candidate.getValue());
             }
         }
     }
@@ -57,9 +57,9 @@ public class Primes {
         System.out.printf("Available core: %d \n", Runtime.getRuntime().availableProcessors());
         while(true)
         {
-            Integer candidate = incomingQueue.poll();
+            MemoryMappedMessage candidate = incomingQueue.poll();
             if( candidate != null) {
-                testPrime(candidate);
+                testPrime(candidate.getValue());
             }
         }
     }
@@ -95,11 +95,17 @@ public class Primes {
             }
         }
 
-        PrimeForkJoinTask fj = PureForkJoinFactory.createCP(candidate);
+        PrimeForkJoinTask fj = PureForkJoinFactory.create(candidate);
         boolean isFjPrime = fjPool.invoke(fj);
         completeMap.remove(candidate);
+        sendResponse(candidate, isFjPrime);
         System.out.printf("[%s] %d is %s\n",Thread.currentThread().getName(), candidate, (isFjPrime?"prime":"composite"));
         return isFjPrime;
+    }
+
+    private void sendResponse(int candidate, boolean isFjPrime) {
+        ResultMessage result = new ResultMessage(candidate, isFjPrime);
+        outgoingQueue.offer(result);
     }
 
     static void complete(int candidate) {
