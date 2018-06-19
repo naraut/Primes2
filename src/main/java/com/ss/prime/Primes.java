@@ -104,7 +104,7 @@ public class Primes {
     }
 
     private void sendResponse(int candidate, boolean isFjPrime) {
-        ResultMessage result = new ResultMessage(candidate, isFjPrime);
+        ResultMessage result = new ResultMessage(candidate, isFjPrime?(byte)1:(byte)0);
         outgoingQueue.offer(result);
     }
 

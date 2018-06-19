@@ -1,5 +1,7 @@
 package com.ss.queue;
 
+import sun.misc.Unsafe;
+
 public class PrimeMessage implements MemoryMappedMessage {
 
     private final int candidate;
@@ -12,4 +14,16 @@ public class PrimeMessage implements MemoryMappedMessage {
     public Integer getValue() {
         return candidate;
     }
+
+    @Override
+    public int messageLength() {
+        return 4;// integer
+    }
+
+    @Override
+    public void writeMessage(Unsafe unsafe, long mem, long offset) {
+        unsafe.putInt(mem+offset, candidate);
+    }
+
+
 }

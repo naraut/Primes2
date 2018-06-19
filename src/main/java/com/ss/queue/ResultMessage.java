@@ -1,11 +1,14 @@
 package com.ss.queue;
 
+import sun.misc.Unsafe;
+
 public class ResultMessage implements MemoryMappedMessage {
 
     private final int candidate;
-    private final boolean isPrime;
+    private final byte isPrime;
+    private static final byte IS_PRIME_FLAG = 1;
 
-    public ResultMessage(int candidate, boolean isPrime) {
+    public ResultMessage(int candidate, byte isPrime) {
         this.candidate = candidate;
         this.isPrime = isPrime;
     }
@@ -15,7 +18,17 @@ public class ResultMessage implements MemoryMappedMessage {
         return candidate;
     }
 
+    @Override
+    public int messageLength() {
+        return 5; // integer + boolean
+    }
+
+    @Override
+    public void writeMessage(Unsafe unsafe, long mem, long offset) {
+
+    }
+
     public boolean isPrime() {
-        return isPrime;
+        return IS_PRIME_FLAG == isPrime;
     }
 }

@@ -24,7 +24,6 @@ public class MemoryMappedGenericQueue<T extends MemoryMappedMessage> extends Abs
     private static final byte Commit = 1;
     private static final int commitFlagLen = 1;
     private static final int MetaData = 4;
-    private static final int messageLength = 4 + MetaData;
     private long limit, writeLimit = 0;
 
     public MemoryMappedGenericQueue(String loc, long fileSizeInMB, Class<T> clazz) throws Exception {
@@ -80,18 +79,13 @@ public class MemoryMappedGenericQueue<T extends MemoryMappedMessage> extends Abs
     public boolean offer(MemoryMappedMessage msg) {
         long commitPos = writeLimit;
         writeLimit+=commitFlagLen;
-        if (writeLimit+messageLength > fileSize) {
+        if (writeLimit+msg.messageLength()+MetaData > fileSize) {
             throw new RuntimeException("End of file was reached.");
         }
-        putInt(writeLimit, msg.getValue());
-        writeLimit+=messageLength;
+        msg.writeMessage(unsafe, memAddress, writeLimit);
+        writeLimit+=msg.messageLength()+MetaData;
         commit(commitPos);
         return true;
-    }
-
-    private void putInt(long pos, int value)
-    {
-        unsafe.putInt(pos+memAddress, value);
     }
 
     private void commit(long commitPos)
@@ -103,14 +97,15 @@ public class MemoryMappedGenericQueue<T extends MemoryMappedMessage> extends Abs
     public MemoryMappedMessage poll() {
         if (isRecordCommitted(limit))
         {
+            final MemoryMappedMessage msg;
             long recordPos = limit+commitFlagLen;
-            limit=recordPos+messageLength;
             if(clazz == ResultMessage.class){
-                return new ResultMessage(unsafe.getInt(recordPos+memAddress), unsafe.getBoolean(null, recordPos+1+memAddress));
+                msg = new ResultMessage(unsafe.getInt(recordPos+memAddress), unsafe.getByte(recordPos+8+memAddress));
             }else{
-                return new PrimeMessage(unsafe.getInt(recordPos+memAddress));
+                msg = new PrimeMessage(unsafe.getInt(recordPos+memAddress));
             }
-
+            limit=recordPos+msg.messageLength()+MetaData;
+            return msg;
         }
         return null;
     }
