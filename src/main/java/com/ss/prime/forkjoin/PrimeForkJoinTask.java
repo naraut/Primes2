@@ -1,4 +1,6 @@
-package com.ss.prime;
+package com.ss.prime.forkjoin;
+
+import com.ss.prime.Primes;
 
 import java.util.concurrent.RecursiveTask;
 

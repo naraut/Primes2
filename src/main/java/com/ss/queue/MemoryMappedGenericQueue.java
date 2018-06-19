@@ -33,7 +33,7 @@ public class MemoryMappedGenericQueue<T extends MemoryMappedMessage> extends Abs
     private static final byte Commit = 1;
     private static final int commitFlagLen = 1;
     private static final int MetaData = 4;
-    private long limit, writeLimit = 0;
+    private long limit=0, writeLimit = 0;
 
     public MemoryMappedGenericQueue(String loc, long fileSizeInMB, Class<T> clazz) throws Exception {
         this.loc = loc;
@@ -99,7 +99,7 @@ public class MemoryMappedGenericQueue<T extends MemoryMappedMessage> extends Abs
 
     private void commit(long commitPos)
     {
-        unsafe.putByteVolatile(null, commitPos+ memAddress, Commit);
+        unsafe.putByteVolatile(null, commitPos+memAddress, Commit);
     }
 
     @Override

@@ -1,5 +1,7 @@
 package com.ss.prime;
 
+import com.ss.prime.forkjoin.ForkJoinTaskFactory;
+import com.ss.prime.forkjoin.PrimeForkJoinTask;
 import com.ss.queue.*;
 import com.ss.prime.queue.messages.MemoryMappedMessage;
 import com.ss.prime.queue.messages.PrimeMessage;
@@ -13,6 +15,7 @@ public class Primes {
     private final MemoryMappedGenericQueue<ResultMessage> replyQueue;
     private final ForkJoinPool fjPool;
     private final LinkedBlockingQueue<Integer> workQueue;
+    private final ConcurrentLinkedQueue<ResultMessage> responseQueue;
     private static ConcurrentHashMap<Integer,Boolean> completeMap;
     private final Thread.UncaughtExceptionHandler handler;
     private static final int computeDirectlyLength = 200;
@@ -27,7 +30,8 @@ public class Primes {
         incomingQueue = new MemoryMappedGenericQueue(incomingQPath, 2, PrimeMessage.class);
         replyQueue = new MemoryMappedGenericQueue(outgoingQPath, 2, ResultMessage.class);
         parallelism = Runtime.getRuntime().availableProcessors();
-        workQueue = new LinkedBlockingQueue<>(20);
+        workQueue = new LinkedBlockingQueue<>(10);
+        responseQueue = new ConcurrentLinkedQueue<>();
         completeMap = new ConcurrentHashMap<>(20);
         handler = (t, e) -> e.printStackTrace();
         fjPool = new ForkJoinPool(parallelism,
@@ -49,6 +53,15 @@ public class Primes {
         for(int i=0;i<parallelism;i++) {
             forkJoinPool.execute(takeWorkOffQueue());
         }
+        ExecutorService executorService = Executors.newSingleThreadExecutor();
+        executorService.execute(() -> {
+            for(;;) {
+                ResultMessage result = responseQueue.poll();
+                if (result != null) {
+                    replyQueue.offer(result);
+                }
+            }
+        });
 
         /// start reading from memory queue to work queue.
         for(;;)
@@ -58,6 +71,9 @@ public class Primes {
                 workQueue.put(candidate.getValue());
             }
         }
+        /*executorService.shutdown();
+        executorService.awaitTermination(10, TimeUnit.MINUTES);
+        */
     }
 
     private void poll() {
@@ -75,7 +91,7 @@ public class Primes {
         return () -> {
             try {
                 while (true) {
-                    testPrime(workQueue.take());
+                    checkPrimeAndSendResult(workQueue.take());
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -83,8 +99,18 @@ public class Primes {
         };
     }
 
-    boolean testPrime(int candidate) {
-        if(candidate <=3) { // less than 3 is even.
+    void checkPrimeAndSendResult(int candidate) {
+        boolean isPrime = testPrime(candidate);
+        completeMap.remove(candidate);
+        sendResponse(candidate, isPrime);
+        System.out.printf("[%s] %d is %s\n",Thread.currentThread().getName(), candidate, (isPrime?"prime":"composite"));
+    }
+
+    private boolean testPrime(int candidate){
+        if(candidate<1) { //neither prime nor composite
+            return false;
+        }
+        if(candidate <=3) { // less than 2,3 are prime.
             return true;
         }
 
@@ -99,23 +125,19 @@ public class Primes {
         }
 
         PrimeForkJoinTask fj = ForkJoinTaskFactory.create(candidate);
-        boolean isFjPrime = fjPool.invoke(fj);
-        completeMap.remove(candidate);
-        sendResponse(candidate, isFjPrime);
-        System.out.printf("[%s] %d is %s\n",Thread.currentThread().getName(), candidate, (isFjPrime?"prime":"composite"));
-        return isFjPrime;
+        return fjPool.invoke(fj);
     }
 
     private void sendResponse(int candidate, boolean isFjPrime) {
         ResultMessage result = new ResultMessage(candidate, isFjPrime?(byte)1:(byte)0);
-        replyQueue.offer(result);
+        responseQueue.offer(result);
     }
 
-    static void complete(int candidate) {
+    public static void complete(int candidate) {
         completeMap.put(candidate, true);
     }
 
-    static boolean isComplete(int candidate){
+    public static boolean isComplete(int candidate){
         return completeMap.containsKey(candidate);
     }
 
@@ -123,7 +145,7 @@ public class Primes {
         return computeDirectlyLength;
     }
 
-    public static final int[] SMALL_PRIMES = new int[]{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107,
+    public static final int[] SMALL_PRIMES = new int[]{3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107,
             109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229,
             233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359,
             367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491,
