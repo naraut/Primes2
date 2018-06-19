@@ -1,8 +1,8 @@
 package com.ss.queue;
 
-import com.ss.prime.queue.messages.MemoryMappedMessage;
-import com.ss.prime.queue.messages.PrimeMessage;
-import com.ss.prime.queue.messages.ResultMessage;
+import com.ss.queue.messages.MemoryMappedMessage;
+import com.ss.queue.messages.PrimeMessage;
+import com.ss.queue.messages.ResultMessage;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;

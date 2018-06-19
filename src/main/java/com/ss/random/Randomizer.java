@@ -14,25 +14,24 @@ import java.util.concurrent.TimeUnit;
 public class Randomizer {
     private final Random random;
     private final int bound = Integer.MAX_VALUE;
-    private final MemoryMappedGenericQueue<PrimeMessage> queue;
-    private final MemoryMappedGenericQueue<ResultMessage> resultQueue;
     private final ExecutorService executorService;
+    private final String primeQ;
+    private final String replyQ;
+    private final int queueSizeInMB = 20;
 
-    public Randomizer() throws Exception {
-        String primeQ = "prime-queue";
-        String resultQ = "result-queue";
-        deleteFilesOnExit(primeQ, resultQ);
+    public Randomizer() {
+        this.primeQ = "prime-queue";
+        this.replyQ = "result-queue";
         this.random = new Random();
-        queue = new MemoryMappedGenericQueue(primeQ, 2, PrimeMessage.class);
-        resultQueue = new MemoryMappedGenericQueue(resultQ, 2, ResultMessage.class);
         executorService = Executors.newSingleThreadExecutor();
+        cleanupOnExit(primeQ, replyQ);
     }
 
-    private void deleteFilesOnExit(String primeQ, String resultQ) {
-        File fPrime = new File(primeQ);
-        File fResult = new File(resultQ);
-        fPrime.deleteOnExit();
-        fResult.deleteOnExit();
+    private void cleanupOnExit(String requestQ, String replyQ) {
+        File fIn = new File(requestQ);
+        File fOut = new File(replyQ);
+        fIn.deleteOnExit();
+        fOut.deleteOnExit();
     }
 
     public static void main(String[] args) throws Exception {
@@ -47,36 +46,42 @@ public class Randomizer {
 
     private final Runnable getResult() {
         return () -> {
-            while(true) {
-                MemoryMappedMessage msg = resultQueue.poll();
-                if(msg != null) {
-                    ResultMessage resultMessage = (ResultMessage)msg;
-                    System.out.printf("[%s] %d is %s\n",Thread.currentThread().getName(), resultMessage.getValue(),
-                            (resultMessage.isPrime()?"prime":"composite"));
-                }
+            try(MemoryMappedGenericQueue replyQueue = new MemoryMappedGenericQueue(replyQ, queueSizeInMB, ResultMessage.class)) {
+                while (true) {
+                    MemoryMappedMessage msg = replyQueue.poll();
+                    if (msg != null) {
+                        ResultMessage resultMessage = (ResultMessage) msg;
+                        System.out.printf("Received %d is %s\n", resultMessage.getValue(),
+                                (resultMessage.isPrime() ? "prime" : "composite"));
+                    }
 
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+                Thread.currentThread().interrupt();
             }
         };
     }
 
     private void sendRandom() throws Exception {
-        long time = System.currentTimeMillis();
         boolean stop = false;
         int counter=0;
 
-        while(!stop)
+        try(MemoryMappedGenericQueue queue = new MemoryMappedGenericQueue(primeQ, queueSizeInMB, PrimeMessage.class))
         {
-            int next = random.nextInt(bound);
-            queue.offer(new PrimeMessage(next));
-            counter++;
-            System.out.printf("Sent %d\n", next);
-            if(counter == 1000){
-                stop = true;
+            while (!stop) {
+                int next = random.nextInt(bound);
+                queue.offer(new PrimeMessage(next));
+                counter++;
+                System.out.printf("Sent %d\n", next);
+                if (counter == 150_000) {
+                    stop = true;
+                }
+                Thread.sleep(1);
             }
-            Thread.sleep(10);
         }
-        System.out.printf("Time taken for sending: %d messages was : %d ms\n", counter, (System.currentTimeMillis() - time));
+        System.out.printf("Sent : %d messages\n", counter);
         executorService.shutdown();
-        executorService.awaitTermination(10, TimeUnit.MINUTES);
+        executorService.awaitTermination(60, TimeUnit.SECONDS);
     }
 }

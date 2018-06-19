@@ -2,17 +2,15 @@ package com.ss.prime;
 
 import com.ss.prime.forkjoin.ForkJoinTaskFactory;
 import com.ss.prime.forkjoin.PrimeForkJoinTask;
-import com.ss.queue.*;
+import com.ss.queue.MemoryMappedGenericQueue;
 import com.ss.queue.messages.MemoryMappedMessage;
 import com.ss.queue.messages.PrimeMessage;
 import com.ss.queue.messages.ResultMessage;
 
+import java.io.File;
 import java.util.concurrent.*;
 
 public class Primes {
-
-    private final MemoryMappedGenericQueue<PrimeMessage> incomingQueue;
-    private final MemoryMappedGenericQueue<ResultMessage> replyQueue;
     private final ForkJoinPool fjPool;
     private final LinkedBlockingQueue<Integer> workQueue;
     private final ConcurrentLinkedQueue<ResultMessage> responseQueue;
@@ -20,15 +18,18 @@ public class Primes {
     private final Thread.UncaughtExceptionHandler handler;
     private static final int computeDirectlyLength = 200;
     private final int parallelism;
+    private final String requestQ;
+    private final String replyQ;
+    private final int queueSizeInMB = 20;
 
-    public Primes() throws Exception
+    public Primes()
     {
         this("prime-queue", "result-queue");
     }
 
-    Primes(String incomingQPath, String outgoingQPath) throws Exception {
-        incomingQueue = new MemoryMappedGenericQueue(incomingQPath, 2, PrimeMessage.class);
-        replyQueue = new MemoryMappedGenericQueue(outgoingQPath, 2, ResultMessage.class);
+    Primes(String requestQ, String replyQ) {
+        this.requestQ = requestQ;
+        this.replyQ = replyQ;
         parallelism = Runtime.getRuntime().availableProcessors();
         workQueue = new LinkedBlockingQueue<>(10);
         responseQueue = new ConcurrentLinkedQueue<>();
@@ -38,6 +39,14 @@ public class Primes {
                                     ForkJoinPool.defaultForkJoinWorkerThreadFactory,
                                     handler,
                                     false);
+        cleanupOnExit(requestQ, replyQ);
+    }
+
+    private void cleanupOnExit(String requestQ, String replyQ) {
+        File fIn = new File(requestQ);
+        File fOut = new File(replyQ);
+        fIn.deleteOnExit();
+        fOut.deleteOnExit();
     }
 
     public static void main(String[] args) throws Exception {
@@ -45,45 +54,34 @@ public class Primes {
         primes.pollAsync();
     }
 
-    private void pollAsync() throws InterruptedException {
+    private void pollAsync() throws Exception {
         System.out.printf("Available cores: %d \n", Runtime.getRuntime().availableProcessors());
         ForkJoinPool forkJoinPool = fjPool.commonPool();
 
-        //Start reading from workQueue
-        for(int i=0;i<parallelism;i++) {
-            forkJoinPool.execute(takeWorkOffQueue());
-        }
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
-        executorService.execute(() -> {
-            for(;;) {
-                ResultMessage result = responseQueue.poll();
-                if (result != null) {
-                    replyQueue.offer(result);
+        startProcessingFromWorkQueue(forkJoinPool);
+
+        startReadingResponsesAndSendingReplies();
+
+        /// start reading from incoming queue to work queue.
+        try(MemoryMappedGenericQueue incomingQueue = new MemoryMappedGenericQueue(requestQ, queueSizeInMB, PrimeMessage.class)) {
+            for (; ; ) {
+                MemoryMappedMessage candidate = incomingQueue.poll();
+                if (candidate != null) {
+                    workQueue.put(candidate.getValue());
                 }
             }
-        });
-
-        /// start reading from memory queue to work queue.
-        for(;;)
-        {
-            MemoryMappedMessage candidate = incomingQueue.poll();
-            if( candidate != null) {
-                workQueue.put(candidate.getValue());
-            }
         }
-        /*executorService.shutdown();
-        executorService.awaitTermination(10, TimeUnit.MINUTES);
-        */
     }
 
-    private void poll() {
-        System.out.printf("Available core: %d \n", Runtime.getRuntime().availableProcessors());
-        while(true)
-        {
-            MemoryMappedMessage candidate = incomingQueue.poll();
-            if( candidate != null) {
-                testPrime(candidate.getValue());
-            }
+    /**
+     * Starts reading from internal work queue using same forkJoin pool
+     * as Prime check pool.
+     *
+     * @param forkJoinPool
+     */
+    private void startProcessingFromWorkQueue(ForkJoinPool forkJoinPool) {
+        for(int i=0;i<parallelism;i++) {
+            forkJoinPool.execute(takeWorkOffQueue());
         }
     }
 
@@ -95,8 +93,31 @@ public class Primes {
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
+                Thread.currentThread().interrupt();
             }
         };
+    }
+
+    /**
+     * Starts reading responses from prime check response queue and sends them to
+     * external reply queue.
+     *
+     * This is single threaded as external memory queue is not thread-safe.
+     */
+    private void startReadingResponsesAndSendingReplies() {
+        Executors.newSingleThreadExecutor().execute(() -> {
+            try(MemoryMappedGenericQueue replyQueue = new MemoryMappedGenericQueue(replyQ, queueSizeInMB, ResultMessage.class)) {
+                for (; ; ) {
+                    ResultMessage result = responseQueue.poll();
+                    if (result != null) {
+                        replyQueue.offer(result);
+                    }
+                }
+            }catch(Exception e){
+                e.printStackTrace();
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 
     void checkPrimeAndSendResult(int candidate) {
@@ -106,7 +127,7 @@ public class Primes {
         System.out.printf("[%s] %d is %s\n",Thread.currentThread().getName(), candidate, (isPrime?"prime":"composite"));
     }
 
-    private boolean testPrime(int candidate){
+    boolean testPrime(int candidate){
         if(candidate<1) { //neither prime nor composite
             return false;
         }
