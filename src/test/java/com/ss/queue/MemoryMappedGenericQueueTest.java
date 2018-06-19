@@ -1,5 +1,8 @@
 package com.ss.queue;
 
+import com.ss.prime.queue.messages.MemoryMappedMessage;
+import com.ss.prime.queue.messages.PrimeMessage;
+import com.ss.prime.queue.messages.ResultMessage;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -10,8 +13,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.CountDownLatch;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toList;

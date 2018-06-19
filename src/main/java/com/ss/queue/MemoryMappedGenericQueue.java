@@ -1,5 +1,8 @@
 package com.ss.queue;
 
+import com.ss.prime.queue.messages.MemoryMappedMessage;
+import com.ss.prime.queue.messages.PrimeMessage;
+import com.ss.prime.queue.messages.ResultMessage;
 import sun.misc.Unsafe;
 import sun.nio.ch.FileChannelImpl;
 
@@ -10,6 +13,12 @@ import java.nio.channels.FileChannel;
 import java.util.AbstractQueue;
 import java.util.Iterator;
 
+/**
+ * An off-heap unbounded queue implementation based on memory cached files. Inspired by HFT Chronicle Queue.
+ * @NonThreadSafe
+ *
+ * @param <T>
+ */
 public class MemoryMappedGenericQueue<T extends MemoryMappedMessage> extends AbstractQueue<MemoryMappedMessage>
         implements AutoCloseable
 {

@@ -1,18 +1,22 @@
 package com.ss.prime;
 
 import com.ss.queue.*;
+import com.ss.prime.queue.messages.MemoryMappedMessage;
+import com.ss.prime.queue.messages.PrimeMessage;
+import com.ss.prime.queue.messages.ResultMessage;
 
 import java.util.concurrent.*;
 
 public class Primes {
 
     private final MemoryMappedGenericQueue<PrimeMessage> incomingQueue;
-    private final MemoryMappedGenericQueue<ResultMessage> outgoingQueue;
+    private final MemoryMappedGenericQueue<ResultMessage> replyQueue;
     private final ForkJoinPool fjPool;
     private final LinkedBlockingQueue<Integer> workQueue;
     private static ConcurrentHashMap<Integer,Boolean> completeMap;
     private final Thread.UncaughtExceptionHandler handler;
     private static final int computeDirectlyLength = 200;
+    private final int parallelism;
 
     public Primes() throws Exception
     {
@@ -21,12 +25,12 @@ public class Primes {
 
     Primes(String incomingQPath, String outgoingQPath) throws Exception {
         incomingQueue = new MemoryMappedGenericQueue(incomingQPath, 2, PrimeMessage.class);
-        outgoingQueue = new MemoryMappedGenericQueue(outgoingQPath, 2, ResultMessage.class);
-
-        workQueue = new LinkedBlockingQueue<>(3000);
-        completeMap = new ConcurrentHashMap<>(1000);
+        replyQueue = new MemoryMappedGenericQueue(outgoingQPath, 2, ResultMessage.class);
+        parallelism = Runtime.getRuntime().availableProcessors();
+        workQueue = new LinkedBlockingQueue<>(20);
+        completeMap = new ConcurrentHashMap<>(20);
         handler = (t, e) -> e.printStackTrace();
-        fjPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors(),
+        fjPool = new ForkJoinPool(parallelism,
                                     ForkJoinPool.defaultForkJoinWorkerThreadFactory,
                                     handler,
                                     false);
@@ -40,10 +44,13 @@ public class Primes {
     private void pollAsync() throws InterruptedException {
         System.out.printf("Available cores: %d \n", Runtime.getRuntime().availableProcessors());
         ForkJoinPool forkJoinPool = fjPool.commonPool();
-        for(int i=0;i<Runtime.getRuntime().availableProcessors();i++) {
+
+        //Start reading from workQueue
+        for(int i=0;i<parallelism;i++) {
             forkJoinPool.execute(takeWorkOffQueue());
         }
 
+        /// start reading from memory queue to work queue.
         for(;;)
         {
             MemoryMappedMessage candidate = incomingQueue.poll();
@@ -68,16 +75,12 @@ public class Primes {
         return () -> {
             try {
                 while (true) {
-                    testPrime(takeFromWorkQueue());
+                    testPrime(workQueue.take());
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         };
-    }
-
-    private Integer takeFromWorkQueue() throws InterruptedException {
-        return workQueue.take();
     }
 
     boolean testPrime(int candidate) {
@@ -95,7 +98,7 @@ public class Primes {
             }
         }
 
-        PrimeForkJoinTask fj = PureForkJoinFactory.create(candidate);
+        PrimeForkJoinTask fj = ForkJoinTaskFactory.create(candidate);
         boolean isFjPrime = fjPool.invoke(fj);
         completeMap.remove(candidate);
         sendResponse(candidate, isFjPrime);
@@ -105,7 +108,7 @@ public class Primes {
 
     private void sendResponse(int candidate, boolean isFjPrime) {
         ResultMessage result = new ResultMessage(candidate, isFjPrime?(byte)1:(byte)0);
-        outgoingQueue.offer(result);
+        replyQueue.offer(result);
     }
 
     static void complete(int candidate) {

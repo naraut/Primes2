@@ -1,6 +1,8 @@
 package com.ss.random;
 
 import com.ss.queue.*;
+import com.ss.prime.queue.messages.PrimeMessage;
+import com.ss.prime.queue.messages.ResultMessage;
 
 import java.util.Random;
 import java.util.concurrent.Executors;

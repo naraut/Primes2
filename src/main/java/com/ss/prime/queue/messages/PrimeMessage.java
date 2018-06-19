@@ -1,4 +1,4 @@
-package com.ss.queue;
+package com.ss.prime.queue.messages;
 
 import sun.misc.Unsafe;
 
