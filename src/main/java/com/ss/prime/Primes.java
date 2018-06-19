@@ -6,34 +6,47 @@ import java.util.concurrent.*;
 
 public class Primes {
 
-    private final MemoryMappedQueue queue;
-    private final ForkJoinPool forkJoinPool;
+    private final MemoryMappedQueue incomingQueue;
+    private final MemoryMappedQueue outgoingQueue;
+    private final ForkJoinPool fjPool;
     private final LinkedBlockingQueue<Integer> workQueue;
     private static ConcurrentHashMap<Integer,Boolean> completeMap;
+    private final Thread.UncaughtExceptionHandler handler;
+    private static final int computeDirectlyLength = 200;
 
     public Primes() throws Exception
     {
-        this("mm-queue");
+        this("prime-queue", "result-queue");
     }
 
-    Primes(String path) throws Exception {
-        queue = new MemoryMappedQueue(path, 2);
-        forkJoinPool = ForkJoinPool.commonPool();
-        workQueue = new LinkedBlockingQueue<>(1000);
-        completeMap = new ConcurrentHashMap<>();
+    Primes(String incomingQPath, String outgoingQPath) throws Exception {
+        incomingQueue = new MemoryMappedQueue(incomingQPath, 2);
+        outgoingQueue = new MemoryMappedQueue(outgoingQPath, 2);
+
+        workQueue = new LinkedBlockingQueue<>(3000);
+        completeMap = new ConcurrentHashMap<>(1000);
+        handler = (t, e) -> e.printStackTrace();
+        fjPool = new ForkJoinPool(Runtime.getRuntime().availableProcessors(),
+                                    ForkJoinPool.defaultForkJoinWorkerThreadFactory,
+                                    handler,
+                                    false);
     }
 
     public static void main(String[] args) throws Exception {
         Primes primes = new Primes();
-        Executors.newFixedThreadPool(1).execute(primes.getRunnable());
-        primes.poll(true);
+        primes.pollAsync();
     }
 
-    private void poll(boolean async) throws InterruptedException {
-        System.out.printf("Available core: %d \n", Runtime.getRuntime().availableProcessors());
-        while(true)
+    private void pollAsync() throws InterruptedException {
+        System.out.printf("Available cores: %d \n", Runtime.getRuntime().availableProcessors());
+        ForkJoinPool forkJoinPool = fjPool.commonPool();
+        for(int i=0;i<Runtime.getRuntime().availableProcessors();i++) {
+            forkJoinPool.execute(takeWorkOffQueue());
+        }
+
+        for(;;)
         {
-            Integer candidate = queue.poll();
+            Integer candidate = incomingQueue.poll();
             if( candidate != null) {
                 workQueue.put(candidate);
             }
@@ -44,24 +57,27 @@ public class Primes {
         System.out.printf("Available core: %d \n", Runtime.getRuntime().availableProcessors());
         while(true)
         {
-            Integer candidate = queue.poll();
+            Integer candidate = incomingQueue.poll();
             if( candidate != null) {
                 testPrime(candidate);
             }
         }
     }
 
-    public Runnable getRunnable() {
+    private final Runnable takeWorkOffQueue() {
         return () -> {
-            while (true)
-            {
-                try {
-                    testPrime(workQueue.take());
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+            try {
+                while (true) {
+                    testPrime(takeFromWorkQueue());
                 }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
         };
+    }
+
+    private Integer takeFromWorkQueue() throws InterruptedException {
+        return workQueue.take();
     }
 
     boolean testPrime(int candidate) {
@@ -79,19 +95,11 @@ public class Primes {
             }
         }
 
-//        PureForkJoin fj = PureForkJoinFactory.create(candidate);
-//        PureForkJoinBigInteger fj = PureForkJoinFactory.createBigInteger(new Integer(candidate).toString());
-        PureForkJoinCP fj = PureForkJoinFactory.createCP(candidate);
-        ForkJoinPool fjPool = new ForkJoinPool();
+        PrimeForkJoinTask fj = PureForkJoinFactory.createCP(candidate);
         boolean isFjPrime = fjPool.invoke(fj);
         completeMap.remove(candidate);
-        System.out.printf("%d is %s\n", candidate, (isFjPrime?"prime":"composite"));
+        System.out.printf("[%s] %d is %s\n",Thread.currentThread().getName(), candidate, (isFjPrime?"prime":"composite"));
         return isFjPrime;
-    }
-
-    boolean testPrimeApache(int candidate)
-    {
-        return org.apache.commons.math3.primes.Primes.isPrime(candidate);
     }
 
     static void complete(int candidate) {
@@ -100,6 +108,10 @@ public class Primes {
 
     static boolean isComplete(int candidate){
         return completeMap.containsKey(candidate);
+    }
+
+    public static int computeDirectlyLength() {
+        return computeDirectlyLength;
     }
 
     public static final int[] SMALL_PRIMES = new int[]{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107,
