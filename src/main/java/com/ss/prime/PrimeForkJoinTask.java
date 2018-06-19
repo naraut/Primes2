@@ -2,7 +2,7 @@ package com.ss.prime;
 
 import java.util.concurrent.RecursiveTask;
 
-public class PureForkJoinCP extends RecursiveTask<Boolean> {
+public class PrimeForkJoinTask extends RecursiveTask<Boolean> {
 
     private static final long serialVersionUID = -1883115459616562727L;
 
@@ -10,7 +10,7 @@ public class PureForkJoinCP extends RecursiveTask<Boolean> {
     private int from;
     private int to;
 
-    PureForkJoinCP(int candidate, int from, int to) {
+    PrimeForkJoinTask(int candidate, int from, int to) {
         this.candidate = candidate;
         this.from = from;
         this.to = to;
@@ -35,16 +35,16 @@ public class PureForkJoinCP extends RecursiveTask<Boolean> {
         if(Primes.isComplete(candidate)) {
             return false;
         }
-        int tmp = to - from ;
-        if (tmp < 200) {
+        int length = to - from ;
+        if (length < Primes.computeDirectlyLength()) {
             return computeDirectly();
         }
 
         int middle = (to+from)/2;
-        PureForkJoinCP leftJoin = new PureForkJoinCP(candidate, from, middle);
-        PureForkJoinCP rightJoin = new PureForkJoinCP(candidate, middle++, to);
+        PrimeForkJoinTask leftHalf = new PrimeForkJoinTask(candidate, from, middle);
+        PrimeForkJoinTask rightHalf = new PrimeForkJoinTask(candidate, middle++, to);
 
-        invokeAll(leftJoin, rightJoin);
+        invokeAll(leftHalf, rightHalf);
         return !Primes.isComplete(candidate);
     }
 }

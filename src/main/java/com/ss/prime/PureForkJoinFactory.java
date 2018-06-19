@@ -1,23 +1,9 @@
 package com.ss.prime;
 
-import java.math.BigInteger;
-
 public class PureForkJoinFactory {
-    public static PureForkJoin create(int candidate)
-    {
-        return new PureForkJoin(candidate, 5, (int) Math.sqrt((double) candidate));
-    }
 
-    public static PureForkJoinBigInteger createBigInteger(String candidate)
+    public static PrimeForkJoinTask createCP(int candidate)
     {
-        BigInteger biCn = new BigInteger(candidate);
-        return new PureForkJoinBigInteger(biCn, new BigInteger("2"), Utils.sqrt(biCn));
+        return new PrimeForkJoinTask(candidate, 5, (int) Math.sqrt((double) candidate));
     }
-
-    public static PureForkJoinCP createCP(int candidate)
-    {
-        PureForkJoinCP pureForkJoinCP = new PureForkJoinCP(candidate, 5, (int) Math.sqrt((double) candidate));
-        return pureForkJoinCP;
-    }
-
 }
